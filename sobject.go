@@ -77,14 +77,14 @@ func (obj *SObject) Describe() (*SObjectMeta, error) {
 
 // Get retrieves all the data fields of an SObject. If id is provided, the SObject with the provided external ID will
 // be retrieved; otherwise, the existing ID of the SObject will be checked. If the SObject doesn't contain an ID field
-// and id is not provided as the parameter, nil is returned.
+// and id is not provided as the parameter, an error is returned.
 // If query is successful, the SObject is updated in-place and exact same address is returned; otherwise, nil is
 // returned if failed.
-func (obj *SObject) Get(id ...string) (*SObject, error) {
+func (obj *SObject) Get(id ...string) error {
 	// Sanity check
 	err := obj.checkTypeClient()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	oid := obj.ID()
@@ -92,45 +92,44 @@ func (obj *SObject) Get(id ...string) (*SObject, error) {
 		oid = id[0]
 	}
 	if oid == "" {
-		return nil, errors.New("object id not found")
+		return errors.New("object id not found")
 	}
 
 	url := obj.client().makeURL("sobjects/" + obj.Type() + "/" + oid)
 	data, err := obj.client().httpRequest(http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	err = json.Unmarshal(data, obj)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	return obj, nil
+	return nil
 }
 
 // Create posts the JSON representation of the SObject to salesforce to create the entry.
-// If the creation is successful, the ID of the SObject instance is updated with the ID returned. Otherwise, nil is
-// returned for failures.
+// If the creation is successful, the ID of the SObject instance is updated with the ID returned.
 // Ref: https://developer.salesforce.com/docs/atlas.en-us.214.0.api_rest.meta/api_rest/dome_sobject_create.htm
-func (obj *SObject) Create() (*SObject, error) {
+func (obj *SObject) Create() error {
 	// Sanity Check
 	err := obj.checkTypeClient()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Make a copy of the incoming SObject, but skip certain metadata fields as they're not understood by salesforce.
 	reqObj := obj.makeCopy()
 	reqData, err := json.Marshal(reqObj)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	url := obj.client().makeURL("sobjects/" + obj.Type() + "/")
 	respData, err := obj.client().httpRequest(http.MethodPost, url, bytes.NewReader(reqData))
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Use an anonymous struct to parse the result if any. This might need to be changed if the result should
@@ -142,32 +141,32 @@ func (obj *SObject) Create() (*SObject, error) {
 	}
 	err = json.Unmarshal(respData, &respVal)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	if !respVal.Success || respVal.ID == "" {
 		log.Println(logPrefix, "unsuccessful")
-		return nil, errors.New(strings.Join(respVal.Errors, ", "))
+		return errors.New(strings.Join(respVal.Errors, ", "))
 	}
 
 	obj.setID(respVal.ID)
-	return obj, nil
+	return nil
 }
 
-// Update updates SObject in place. Upon successful, same SObject is returned for chained access.
+// Update updates SObject in place.
 // ID is required.
-func (obj *SObject) Update() (*SObject, error) {
+func (obj *SObject) Update() error {
 	// Sanity check.
 	err := obj.checkTypeClient()
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	// Make a copy of the incoming SObject, but skip certain metadata fields as they're not understood by salesforce.
 	reqObj := obj.makeCopy()
 	reqData, err := json.Marshal(reqObj)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	queryBase := "sobjects/"
@@ -177,11 +176,11 @@ func (obj *SObject) Update() (*SObject, error) {
 	url := obj.client().makeURL(queryBase + obj.Type() + "/" + obj.ID())
 	respData, err := obj.client().httpRequest(http.MethodPatch, url, bytes.NewReader(reqData))
 	if err != nil {
-		return nil, err
+		return err
 	}
 	log.Println(string(respData))
 
-	return obj, nil
+	return nil
 }
 
 // Delete deletes an SObject record identified by external ID. nil is returned if the operation completes successfully;
@@ -315,11 +314,9 @@ func (obj *SObject) AttributesField() *SObjectAttributes {
 	}
 }
 
-// Set indexes value into SObject instance with provided key. The same SObject pointer is returned to allow
-// chained access.
-func (obj *SObject) Set(key string, value interface{}) *SObject {
+// Set indexes value into SObject instance with provided key.
+func (obj *SObject) Set(key string, value interface{}) {
 	(*obj)[key] = value
-	return obj
 }
 
 // client returns the associated Client with the SObject.

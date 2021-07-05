@@ -102,7 +102,8 @@ func TestSObject_Get(t *testing.T) {
 	ownerID := queryResult.Records[0].StringField("OwnerId")
 
 	// Positive
-	obj, _ := client.SObject("Case").Get(oid)
+	obj := client.SObject("Case")
+	_ = obj.Get(oid)
 	if obj.ID() != oid || obj.StringField("OwnerId") != ownerID {
 		t.Fail()
 	}
@@ -113,20 +114,21 @@ func TestSObject_Get(t *testing.T) {
 		t.Fail()
 	}
 	obj.setID(oid)
-	obj.Get()
+	_ = obj.Get()
 	if obj.ID() != oid || obj.StringField("OwnerId") != ownerID {
 		t.Fail()
 	}
 
 	// Negative 1
-	obj, _ = client.SObject("Case").Get("non-exist-id")
+	obj = client.SObject("Case")
+	_ = obj.Get("non-exist-id")
 	if obj != nil {
 		t.Fail()
 	}
 
 	// Negative 2
 	obj = &SObject{}
-	obj, _ = obj.Get()
+	_ = obj.Get()
 	if obj != nil {
 		t.Fail()
 	}
@@ -137,53 +139,54 @@ func TestSObject_Create(t *testing.T) {
 
 	// Positive
 	case1 := client.SObject("Case")
-	case1Result, _ := case1.Set("Subject", "Case created by simpleforce on "+time.Now().Format("2006/01/02 03:04:05")).
-		Set("Comments", "This case is created by simpleforce").
-		Create()
-	if case1Result == nil || case1Result.ID() == "" || case1Result.Type() != case1.Type() {
+	case1.Set("Subject", "Case created by simpleforce on "+time.Now().Format("2006/01/02 03:04:05"))
+	case1.Set("Comments", "This case is created by simpleforce")
+	_ = case1.Create()
+	if case1 == nil || case1.ID() == "" || case1.Type() != case1.Type() {
 		t.Fail()
 	} else {
-		c, _ := case1Result.Get()
-		log.Println(logPrefix, "Case created,", c.StringField("CaseNumber"))
+		_ = case1.Get()
+		log.Println(logPrefix, "Case created,", case1.StringField("CaseNumber"))
 	}
 
 	// Positive 2
 	caseComment1 := client.SObject("CaseComment")
-	caseComment1Result, _ := caseComment1.Set("ParentId", case1Result.ID()).
-		Set("CommentBody", "This comment is created by simpleforce").
-		Set("IsPublished", true).
-		Create()
-	caseComment1Result, _ = caseComment1Result.Get()
-	if caseComment1Result.SObjectField("Case", "ParentId").ID() != case1Result.ID() {
+	caseComment1.Set("ParentId", case1.ID())
+	caseComment1.Set("CommentBody", "This comment is created by simpleforce")
+	caseComment1.Set("IsPublished", true)
+	_ = caseComment1.Create()
+	_ = caseComment1.Get()
+	if caseComment1.SObjectField("Case", "ParentId").ID() != case1.ID() {
 		t.Fail()
 	} else {
-		log.Println(logPrefix, "CaseComment created,", caseComment1Result.ID())
+		log.Println(logPrefix, "CaseComment created,", caseComment1.ID())
 	}
 
 	// Negative: object without type.
 	obj := client.SObject()
-	obj, _ = obj.Create()
+	_ = obj.Create()
 	if obj != nil {
 		t.Fail()
 	}
 
 	// Negative: object without client.
 	obj = &SObject{}
-	obj, _ = obj.Create()
+	_ = obj.Create()
 	if obj != nil {
 		t.Fail()
 	}
 
 	// Negative: Invalid type
 	obj = client.SObject("__SOME_INVALID_TYPE__")
-	obj, _ = obj.Create()
+	_ = obj.Create()
 	if obj != nil {
 		t.Fail()
 	}
 
 	// Negative: Invalid field
-	obj = client.SObject("Case").Set("__SOME_INVALID_FIELD__", "")
-	obj, _ = obj.Create()
+	obj = client.SObject("Case")
+	obj.Set("__SOME_INVALID_FIELD__", "")
+	_ = obj.Create()
 	if obj != nil {
 		t.Fail()
 	}
@@ -194,11 +197,11 @@ func TestSObject_Update(t *testing.T) {
 
 	// Positive
 	c := client.SObject("Case")
-	c = c.Set("Subject", "Case created by simpleforce on "+time.Now().Format("2006/01/02 03:04:05"))
-	c, _ = c.Create()
-	c = c.Set("Subject", "Case subject updated by simpleforce")
-	c, _ = c.Update()
-	c, _ = c.Get()
+	c.Set("Subject", "Case created by simpleforce on "+time.Now().Format("2006/01/02 03:04:05"))
+	_ = c.Create()
+	c.Set("Subject", "Case subject updated by simpleforce")
+	_ = c.Update()
+	_ = c.Get()
 	if c.StringField("Subject") != "Case subject updated by simpleforce" {
 		t.Fail()
 	}
@@ -208,10 +211,10 @@ func TestSObject_Delete(t *testing.T) {
 	client := requireClient(t, true)
 
 	// Positive: create a case first then delete it and verify if it is gone.
-	case1, _ := client.SObject("Case").
-		Set("Subject", "Case created by simpleforce on "+time.Now().Format("2006/01/02 03:04:05")).
-		Create()
-	case1, _ = case1.Get()
+	case1 := client.SObject("Case")
+	case1.Set("Subject", "Case created by simpleforce on "+time.Now().Format("2006/01/02 03:04:05"))
+	_ = case1.Create()
+	_ = case1.Get()
 	if case1 == nil || case1.ID() == "" {
 		t.Fatal()
 	}
@@ -219,7 +222,7 @@ func TestSObject_Delete(t *testing.T) {
 	if case1.Delete() != nil {
 		t.Fail()
 	}
-	case1, _ = client.SObject("Case").Get(caseID)
+	_ = client.SObject("Case").Get(caseID)
 	if case1 != nil {
 		t.Fail()
 	}
@@ -230,26 +233,27 @@ func TestSObject_GetUpdate(t *testing.T) {
 	client := requireClient(t, true)
 
 	// Create a new case first.
-	case1, _ := client.SObject("Case").
-		Set("Subject", "Original").
-		Create()
-	case1, _ = case1.Get()
+	case1 := client.SObject("Case")
+	case1.Set("Subject", "Original")
+	_ = case1.Create()
+	_ = case1.Get()
 
 	// Query the case by ID, then update the Subject.
-	case2, _ := client.SObject("Case").
-		Get(case1.ID())
-	case2, _ = case2.Set("Subject", "Updated").
-		Update()
-	case2, _ = case2.Get()
+	case2 := client.SObject("Case")
+	_ = case2.Get(case1.ID())
+	case2.Set("Subject", "Updated")
+	_ = case2.Update()
+	_ = case2.Get()
 
 	// Query the case by ID again and check if the Subject has been updated.
-	case3, _ := client.SObject("Case").
-		Get(case2.ID())
+	case3 := client.SObject("Case")
+	_ = case3.Get(case2.ID())
 
 	if case3.StringField("Subject") != "Updated" {
 		t.Fail()
 	}
 
-	user1, _ := client.SObject("User").Create()
+	user1 := client.SObject("User")
+	_ = user1.Create()
 	log.Println(user1.ID())
 }
