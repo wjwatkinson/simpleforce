@@ -257,3 +257,19 @@ func TestSObject_GetUpdate(t *testing.T) {
 	_ = user1.Create()
 	log.Println(user1.ID())
 }
+
+// TestSObject_SetMany validates setting multiple fields from a map[string]interface{}
+func TestSObject_SetMany(t *testing.T) {
+	client := requireClient(t, true)
+
+	data := map[string]interface{}{
+		"FirstName": "John",
+		"LastName":  "Doe",
+	}
+
+	c := client.SObject("Contact")
+	c.SetMany(data)
+	if c.StringField("FirstName") != "John" || c.StringField("LastName") != "Doe" {
+		t.Fail()
+	}
+}

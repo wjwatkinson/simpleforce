@@ -319,6 +319,13 @@ func (obj *SObject) Set(key string, value interface{}) {
 	(*obj)[key] = value
 }
 
+// Set indexes and values into SObject instance from map[string]interface{}
+func (obj *SObject) SetMany(data map[string]interface{}) {
+	for k, v := range data {
+		obj.Set(k, v)
+	}
+}
+
 // client returns the associated Client with the SObject.
 func (obj *SObject) client() *Client {
 	client := obj.InterfaceField(sobjectClientKey)
