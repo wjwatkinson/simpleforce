@@ -153,6 +153,55 @@ func (obj *SObject) Create() error {
 	return nil
 }
 
+// Create or Update an object based on an external ID
+func (obj *SObject) Upsert(ext_id_fname string) error {
+	// Sanity Check
+	err := obj.checkTypeClient()
+	if err != nil {
+		return err
+	}
+
+	ext_id := obj.StringField(ext_id_fname)
+	if ext_id == "" {
+		return errors.New("external ID field not set")
+	}
+
+	// Make a copy of the incoming SObject, but skip certain metadata fields as they're not understood by salesforce.
+	reqObj := obj.makeCopy()
+	reqData, err := json.Marshal(reqObj)
+	if err != nil {
+		return err
+	}
+
+	url := obj.client().makeURL("sobjects/" + obj.Type() + "/" + ext_id_fname + "/" + ext_id)
+	respData, err := obj.client().httpRequest(http.MethodPatch, url, bytes.NewReader(reqData))
+	if err != nil {
+		return err
+	}
+
+	// Use an anonymous struct to parse the result if any. This might need to be changed if the result should
+	// be returned to the caller in some manner, especially if the client would like to decode the errors.
+	var respVal struct {
+		ID      string   `json:"id"`
+		Success bool     `json:"success"`
+		Errors  []string `json:"errors"`
+		Created bool     `json:"created"`
+	}
+
+	err = json.Unmarshal(respData, &respVal)
+	if err != nil {
+		return err
+	}
+
+	if !respVal.Success || respVal.ID == "" {
+		log.Println(logPrefix, "unsuccessful")
+		return errors.New(strings.Join(respVal.Errors, ", "))
+	}
+
+	obj.setID(respVal.ID)
+	return nil
+}
+
 // Update updates SObject in place.
 // ID is required.
 func (obj *SObject) Update() error {

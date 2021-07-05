@@ -273,3 +273,24 @@ func TestSObject_SetMany(t *testing.T) {
 		t.Fail()
 	}
 }
+
+// TestSObject_Upsert
+func TestSObject_Upsert(t *testing.T) {
+	client := requireClient(t, true)
+
+	c := client.SObject("Case")
+	c.Set("Subject", "TestUpsertCreate")
+	c.Set("ext_id", "ext_id")
+	_ = c.Upsert("ext_id")
+
+	id := c.ID()
+	if c.ID() == "" {
+		t.Fail()
+	}
+
+	c.Set("Subject", "TestUpsertUpdate")
+	c.Upsert("ext_id")
+	if c.ID() != id || c.StringField("Subject") != "TestUpsertUpdate" {
+		t.Fail()
+	}
+}
