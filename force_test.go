@@ -3,8 +3,9 @@ package simpleforce
 import (
 	"log"
 	"os"
-	"strings"
 	"testing"
+
+	"github.com/jarcoal/httpmock"
 )
 
 var (
@@ -20,22 +21,43 @@ var (
 	}()
 )
 
-func checkCredentialsAndSkip(t *testing.T) {
-	if sfUser == "" || sfPass == "" {
-		log.Println(logPrefix, "SF_USER, SF_PASS environment variables are not set.")
-		t.Skip()
-	}
+func activateHttpMock() {
+}
+
+func registerLoginMock(c *Client) {
+	loginResp := `<?xml version="1.0" encoding="utf-8" ?>
+		<env:Envelope>
+			<env:Body>
+				<env:loginResponse>
+					<env:result>
+						<env:serverUrl>https://na0-api.salesforce.com/services/Soap/c/2.5</env:serverUrl>
+						<env:sessionId>sessionId</env:sessionId>
+						<env:userId>userId</env:userId>
+						<env:userInfo>
+							<env:userEmail>userEmail</env:userEmail>
+							<env:userFullName>userFullName</env:userFullName>
+							<env:userName>userName</env:userName>
+						</env:userInfo>
+					</env:result>
+				</env:loginResponse>
+			</env:Body>
+		</env:Envelope>`
+	mockURL := "https://login.salesforce.com//services/Soap/u/" + c.apiVersion
+	httpmock.RegisterResponder("POST", mockURL,
+		httpmock.NewStringResponder(200, loginResp))
 }
 
 func requireClient(t *testing.T, skippable bool) *Client {
-	if skippable {
-		checkCredentialsAndSkip(t)
-	}
+	httpmock.Activate()
+	httpmock.Reset()
 
 	client := NewClient(sfURL, DefaultClientID, DefaultAPIVersion)
 	if client == nil {
 		t.Fail()
 	}
+
+	registerLoginMock(client)
+
 	err := client.LoginPassword(sfUser, sfPass, sfToken)
 	if err != nil {
 		t.Fatal()
@@ -43,13 +65,16 @@ func requireClient(t *testing.T, skippable bool) *Client {
 	return client
 }
 
-func TestClient_LoginPassword(t *testing.T) {
-	checkCredentialsAndSkip(t)
+func TestClient_LoginPassword_success(t *testing.T) {
+	httpmock.Activate()
+	defer httpmock.DeactivateAndReset()
 
 	client := NewClient(sfURL, DefaultClientID, DefaultAPIVersion)
 	if client == nil {
 		t.Fatal()
 	}
+
+	registerLoginMock(client)
 
 	// Use token
 	err := client.LoginPassword(sfUser, sfPass, sfToken)
@@ -58,20 +83,55 @@ func TestClient_LoginPassword(t *testing.T) {
 	} else {
 		log.Println(logPrefix, "sessionID:", client.sessionID)
 	}
+}
 
-	err = client.LoginPassword("__INVALID_USER__", "__INVALID_PASS__", "__INVALID_TOKEN__")
+func TestClient_LoginPassword_fail(t *testing.T) {
+	httpmock.Activate()
+	defer httpmock.DeactivateAndReset()
+
+	client := NewClient(sfURL, DefaultClientID, DefaultAPIVersion)
+	if client == nil {
+		t.Fatal()
+	}
+
+	loginErrResp := `<?xml version="1.0" encoding="UTF-8"?>
+		<soapenv:Envelope
+			xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+			xmlns:sf="urn:fault.partner.soap.sforce.com"
+			xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+			<soapenv:Body>
+				<soapenv:Fault>
+					<faultcode>INVALID_LOGIN</faultcode>
+					<faultstring>INVALID_LOGIN: Invalid username, password, security token; or user locked out.</faultstring>
+					<detail>
+						<sf:LoginFault xsi:type="sf:LoginFault">
+						<sf:exceptionCode>INVALID_LOGIN</sf:exceptionCode>
+						<sf:exceptionMessage>Invalid username, password, security token; or user locked out.</sf:exceptionMessage>
+						</sf:LoginFault>
+					</detail>
+				</soapenv:Fault>
+			</soapenv:Body>
+		</soapenv:Envelope>`
+	mockURL := "https://login.salesforce.com//services/Soap/u/" + client.apiVersion
+	httpmock.RegisterResponder("POST", mockURL,
+		httpmock.NewStringResponder(500, loginErrResp))
+
+	err := client.LoginPassword("__INVALID_USER__", "__INVALID_PASS__", "__INVALID_TOKEN__")
 	if err == nil {
 		t.Fail()
 	}
 }
 
 func TestClient_LoginPasswordNoToken(t *testing.T) {
-	checkCredentialsAndSkip(t)
+	httpmock.Activate()
+	defer httpmock.DeactivateAndReset()
 
 	client := NewClient(sfURL, DefaultClientID, DefaultAPIVersion)
 	if client == nil {
 		t.Fatal()
 	}
+
+	registerLoginMock(client)
 
 	// Trusted IP must be configured AND the request must be initiated from the trusted IP range.
 	err := client.LoginPassword(sfUser, sfPass, "")
@@ -87,58 +147,21 @@ func TestClient_LoginOAuth(t *testing.T) {
 }
 
 func TestClient_Query(t *testing.T) {
+	httpmock.Activate()
+	defer httpmock.DeactivateAndReset()
+
 	client := requireClient(t, true)
+
+	mockURL := "https://na0-api.salesforce.com/services/data/v" + client.apiVersion + "/query?q=SELECT%20Id%2CLastModifiedById%2CLastModifiedDate%2CParentId%2CCommentBody%20FROM%20CaseComment"
+
+	httpmock.RegisterResponder("GET", mockURL,
+		httpmock.NewStringResponder(200, `{"TotalSize": 0, "Done": true, "NextRecordsURL": "NextRecordsURL", "records": []}`))
 
 	q := "SELECT Id,LastModifiedById,LastModifiedDate,ParentId,CommentBody FROM CaseComment"
 	result, err := client.Query(q)
 	if err != nil {
 		log.Println(logPrefix, "query failed,", err)
 		t.FailNow()
-	}
-
-	log.Println(logPrefix, result.TotalSize, result.Done, result.NextRecordsURL)
-	if result.TotalSize < 1 {
-		log.Println(logPrefix, "no records returned.")
-		t.FailNow()
-	}
-	for _, record := range result.Records {
-		if record.Type() != "CaseComment" {
-			t.Fail()
-		}
-	}
-}
-
-func TestClient_Query2(t *testing.T) {
-	client := requireClient(t, true)
-
-	q := "Select+id,createdbyid,parentid,parent.casenumber,parent.subject,createdby.name,createdby.alias+from+casecomment"
-	result, err := client.Query(q)
-	if err != nil {
-		t.FailNow()
-	}
-	if len(result.Records) > 0 {
-		comment1 := &result.Records[0]
-		case1 := comment1.SObjectField("Case", "Parent")
-		_ = case1.Get()
-		if comment1.StringField("ParentId") != case1.ID() {
-			t.Fail()
-		}
-	}
-}
-
-func TestClient_QueryLike(t *testing.T) {
-	client := requireClient(t, true)
-
-	q := "Select Id, createdby.name, subject from case where subject like '%simpleforce%'"
-	result, err := client.Query(q)
-	if err != nil {
-		t.FailNow()
-	}
-	if len(result.Records) > 0 {
-		case0 := &result.Records[0]
-		if !strings.Contains(case0.StringField("Subject"), "simpleforce") {
-			t.FailNow()
-		}
 	}
 }
 
